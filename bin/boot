@@ -42,7 +42,7 @@ function get_announce_ip_addr {
 # configure etcd
 export ETCD_PORT=${ETCD_PORT:-4001}
 export ETCD_ENDPOINT="$ETCD_HOST:$ETCD_PORT"
-export ETCD_PATH=${ETCD_PATH:-/registry/$ANNOUNCE_NAME}
+export ETCD_PATH=${ETCD_PATH:-/registry/$ANNOUNCE_CONTAINER}
 export ETCD_TTL=${ETCD_TTL:-30}
 
 export $ANNOUNCE_IP=$(get_announce_ip_addr)
