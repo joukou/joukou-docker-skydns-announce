@@ -1,0 +1,71 @@
+#!/bin/bash
+# Copyright 2014 Joukou Ltd
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# fail hard and fast even on pipelines
+set -eo pipefail
+
+# set debug based on envvar
+[[ $DEBUG ]] && set -x
+
+# retrieve IPv4 address asigned to the given interface
+function get_if_v4_addr {
+  local interface="${1}"
+  ip -o -4 addr list "${interface}" 2> /dev/null | \
+      awk '{print $4}' | \
+      cut -d/ -f1
+}
+
+# determine the ip address of the service that is being announced
+function get_announce_ip_addr {
+  if [[ -n $ANNOUNCE_INTERFACE ]]; then
+    return $(get_if_v4_addr $ANNOUNCE_INTERFACE)
+  else [[ -n $ANNOUNCE_CONTAINER ]]; then
+    return $(docker inspect $ANNOUNCE_CONTAINER | jq .[0].NetworkSettings.IPAddress)
+  else
+    printf "\$ANNOUNCE_INTERFACE or \$ANNOUNCE_CONTAINER must be set.\n"
+    exit 1
+  fi
+}
+
+# configure etcd
+export ETCD_PORT=${ETCD_PORT:-4001}
+export ETCD_ENDPOINT="$ETCD_HOST:$ETCD_PORT"
+export ETCD_PATH=${ETCD_PATH:-/registry/$ANNOUNCE_NAME}
+export ETCD_TTL=${ETCD_TTL:-30}
+
+export $ANNOUNCE_IP=$(get_announce_ip_addr)
+
+# smart shutdown on SIGINT and SIGTERM
+function on_exit() {
+  etcdctl --no-sync -C $ETCD_ENDPOINT rm $ETCD_PATH --with-value $ANNOUNCE_IP
+  exit 0
+}
+trap on_exit INT TERM
+
+# wait for etcd to be available
+until etcdctl --no-sync -C $ETCD_ENDPOINT ls >/dev/null 2>&1; do
+  echo "waiting for etcd at $ETCD_ENDPOINT..."
+  sleep $(($ETCD_TTL/2))  # sleep for half the TTL
+done
+
+# wait until etcd has discarded potentially stale values
+sleep $(($ETCD_TTL+1))
+
+# loop until SIGINT or SIGTERM
+while :
+do
+  etcdctl --no-sync -C $ETCD_ENDPOINT set $ETCD_PATH $ANNOUNCE_IP --ttl $ETCD_TTL >/dev/null
+  sleep $(($ETCD_TTL/2)) # sleep for half the TTL
+done
