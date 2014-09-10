@@ -4,9 +4,30 @@ Generic etcd Service Announcement Dockerfile for CoreOS
 
 ## Usage
 
+There are two modes of operation, the first is for annoucing the IP address of
+a given container's internal `eth0` (virtual) network card:
+
 ```
-docker run -e "CONTAINER=riak" -e "SERVICE=riak" -e "TTL=30" quay.io/joukou/etcd-announce
+docker run -v /var/run/docker.sock:/var/run/docker.sock -e "ANNOUNCE_CONTAINER=name-of-container" -e "ETCD_ENDPOINT="172.17.42.1:4001" -e "ETCD_TTL=30"
 ```
+
+The second is for announcing the IP address of an interface on the CoreOS host
+machine itself; i.e. for use with `--net=host`. **Caution:** This tells Docker
+to not containerize the container's networking so network-wise the container(s)
+live "outside" in the main CoreOS host and have full access to its network
+interfaces. This can lead to processes in the container being able to do
+unexpected things like [restart your computer](https://github.com/docker/docker/issues/6401).
+
+```
+docker run --net=host -e "ANNOUNCE_INTERFACE=ens3" -e "ETCD_ENDPOINT=172.17.42.1:4001" -e "ETCD_TTL=30" -e "ETCD_PATH=/registry/service-name"
+```
+
+In both cases the container process will run, updating etcd, every half of the
+etcd TTL.
+
+## Example
+
+See [`quay.io/joukou/riak`](https://github.com/joukou/joukou-docker-riak).
 
 ## Metrics
 
