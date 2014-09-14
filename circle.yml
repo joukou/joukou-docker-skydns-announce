@@ -14,7 +14,7 @@
 machine:
   environment:
     PATH: $HOME/$CIRCLE_PROJECT_REPONAME/.circle:$PATH
-    DOCKER_IMAGE_NAME: quay.io/joukou/etcd-announce
+    DOCKER_IMAGE_NAME: quay.io/joukou/skydns-announce
   node:
     version: 0.10.31
   services:
