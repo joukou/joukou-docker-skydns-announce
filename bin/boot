@@ -1,5 +1,6 @@
 #!/bin/bash
 # Copyright 2014 Joukou Ltd
+# Copyright 2014, OpDemand LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,52 +21,86 @@ set -eo pipefail
 [[ $DEBUG ]] && set -x
 
 # retrieve IPv4 address asigned to the given interface
-function get_if_v4_addr {
-  local interface="${1}"
-  ip -o -4 addr list "${interface}" 2> /dev/null | \
+function get_iface_v4_addr {
+  local iface="${1}"
+  ip -o -4 addr list "${iface}" 2> /dev/null | \
       awk '{print $4}' | \
       cut -d/ -f1
 }
 
-# determine the ip address of the service that is being announced
-function get_announce_ip_addr {
-  if [[ -n $ANNOUNCE_INTERFACE ]]; then
-    return $(get_if_v4_addr $ANNOUNCE_INTERFACE)
-  else [[ -n $ANNOUNCE_CONTAINER ]]; then
-    return $(docker inspect $ANNOUNCE_CONTAINER | jq .[0].NetworkSettings.IPAddress)
-  else
-    printf "\$ANNOUNCE_INTERFACE or \$ANNOUNCE_CONTAINER must be set.\n"
-    exit 1
-  fi
+# retrieve the ip address of the given container
+function get_container_v4_addr {
+  local container_name="${1}"
+  docker inspect $container_name | jq .[0].NetworkSettings.IPAddress
 }
 
 # configure etcd
 export ETCD_PORT=${ETCD_PORT:-4001}
-export ETCD_ENDPOINT="$ETCD_HOST:$ETCD_PORT"
-export ETCD_PATH=${ETCD_PATH:-/registry/$ANNOUNCE_CONTAINER}
-export ETCD_TTL=${ETCD_TTL:-30}
+export ETCD_ADDR=${ETCD_ADDR:-${DOCKER_BRIDGE_IP}:${ETCD_PORT}}
+export ETCD_TTL=${ETCD_TTL:-10}
 
-export $ANNOUNCE_IP=$(get_announce_ip_addr)
+# configure SkyDNS
+export SKYDNS_TLD=${SKYDNS_TLD:-local/joukou}
+export SKYDNS_ZONE=${SKYDNS_ZONE:-all}
+export SKYDNS_ENV=${SKYDNS_ENV:-production}
+
+if [[ -n $SKYDNS_IFACE ]]
+then
+  export SKYDNS_IP="$(get_iface_v4_addr $SKYDNS_IFACE)"
+  if [[ ! -n $SKYDNS_NAME ]]
+  then
+    echo "[error] \$SKYDNS_NAME must be set when using \$SKYDNS_IFACE!"
+    exit 1
+  fi
+elif [[ -n $SKYDNS_CONTAINER ]]
+then
+  export SKYDNS_IP="$(get_container_v4_addr $SKYDNS_CONTAINER)"
+  export SKYDNS_NAME=$SKYDNS_CONTAINER
+else
+  echo "[error] \$SKYDNS_IFACE OR \$SKYDNS_CONTAINER must be set!"
+  exit 1
+fi
+
+if [[ ! -n $SKYDNS_INSTANCE ]]; then
+  echo "[error] \$SKYDNS_INSTANCE number must be set; i.e. pass-through %i from systemd!"
+  exit 1
+fi
+
+if [[ ! -n $SKYDNS_PORT ]]; then
+  echo "[error] \$SKYDNS_PORT must be set!"
+  exit 1
+fi
+
+export SKYDNS_PROTO=${SKYDNS_PROTO:-tcp}
+
+export SKYDNS_PATH="/skydns/${SKYDNS_TLD}/${SKYDNS_ZONE}/${SKYDNS_ENV}/${SKYDNS_NAME}/${SKYDNS_INSTANCE}"
 
 # smart shutdown on SIGINT and SIGTERM
 function on_exit() {
-  etcdctl --no-sync -C $ETCD_ENDPOINT rm $ETCD_PATH --with-value $ANNOUNCE_IP
+  echo "[info] removing ${SKYDNS_PATH}..."
+  etcdctl --no-sync -C $ETCD_ADDR rm $SKYDNS_PATH --with-value \
+    "{\"host\": \"${SKYDNS_IP}\", \"port\": \"${SKYDNS_PORT}\"}" >/dev/null 2>&1
   exit 0
 }
 trap on_exit INT TERM
 
 # wait for etcd to be available
-until etcdctl --no-sync -C $ETCD_ENDPOINT ls >/dev/null 2>&1; do
-  echo "waiting for etcd at $ETCD_ENDPOINT..."
-  sleep $(($ETCD_TTL/2))  # sleep for half the TTL
+until etcdctl --no-sync -C $ETCD_ADDR ls >/dev/null 2>&1; do
+  echo "[info] waiting for etcd at $ETCD_ADDR..."
+  sleep $(($ETCD_TTL/2))  # sleep for half the etcd TTL
 done
 
 # wait until etcd has discarded potentially stale values
+echo "[info] sleeping for $((ETCD_TTL+1))s for etcd to discard potentially stale values..."
 sleep $(($ETCD_TTL+1))
 
-# loop until SIGINT or SIGTERM
-while :
-do
-  etcdctl --no-sync -C $ETCD_ENDPOINT set $ETCD_PATH $ANNOUNCE_IP --ttl $ETCD_TTL >/dev/null
-  sleep $(($ETCD_TTL/2)) # sleep for half the TTL
+echo "[info] announcing ${SKYDNS_PATH}..."
+echo "[info] host: ${SKYDNS_IP}"
+echo "[info] port: ${SKYDNS_PORT}"
+
+while etcdctl --no-sync -C $ETCD_ADDR set $SKYDNS_PATH --ttl $ETCD_TTL "{\"host\": \"${SKYDNS_IP}\", \"port\": \"${SKYDNS_PORT}\"}" 2>&1; do
+  sleep $(($ETCD_TTL/2)) # sleep for half the etcd TTL
 done
+
+# if the loop quits, something went wrong
+exit 1

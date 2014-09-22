@@ -8,7 +8,7 @@ There are two modes of operation, the first is for annoucing the IP address of
 a given container's internal `eth0` (virtual) network card:
 
 ```
-docker run -v /var/run/docker.sock:/var/run/docker.sock -e "ANNOUNCE_CONTAINER=name-of-container" -e "ETCD_ENDPOINT="172.17.42.1:4001" -e "ETCD_TTL=30"
+docker run -v /var/run/docker.sock:/var/run/docker.sock -e "SKYDNS_CONTAINER=name-of-container" -e "SKYDNS_INSTANCE=1" -e "SKYDNS_PORT=8080" -e "ETCD_ADDR="172.17.42.1:4001" -e "ETCD_TTL=30"
 ```
 
 The second is for announcing the IP address of an interface on the CoreOS host
@@ -19,7 +19,7 @@ interfaces. This can lead to processes in the container being able to do
 unexpected things like [restart your computer](https://github.com/docker/docker/issues/6401).
 
 ```
-docker run --net=host -e "ANNOUNCE_INTERFACE=ens3" -e "ETCD_ENDPOINT=172.17.42.1:4001" -e "ETCD_TTL=30" -e "ETCD_PATH=/registry/service-name"
+docker run --net=host -e "SKYDNS_IFACE=ens3" -e "ETCD_ADDR=172.17.42.1:4001" -e "ETCD_TTL=30" -e "SKYDNS_NAME=example"
 ```
 
 In both cases the container process will run, updating etcd, every half of the
