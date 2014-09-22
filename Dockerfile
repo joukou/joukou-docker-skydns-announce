@@ -14,11 +14,5 @@
 FROM quay.io/joukou/base
 MAINTAINER Isaac Johnston <isaac.johnston@joukou.com>
 
-WORKDIR /tmp
-RUN curl -LO http://get.docker.io/builds/Linux/x86_64/docker-latest && \
-    mv docker-latest /usr/bin/docker && \
-    chmod +x /usr/bin/docker && \
-    rm -rf /tmp/*
-
 ADD bin/boot /bin/
 ENTRYPOINT [ "/bin/boot" ]
