@@ -40,16 +40,16 @@ export ETCD_ADDR=${ETCD_ADDR:-${DOCKER_BRIDGE_IP}:${ETCD_PORT}}
 export ETCD_TTL=${ETCD_TTL:-10}
 
 # configure SkyDNS
-export SKYDNS_TLD=${SKYDNS_TLD:-local/joukou}
+export SKYDNS_DOMAIN_PATH=${SKYDNS_DOMAIN_PATH:-local/joukou}
 export SKYDNS_ZONE=${SKYDNS_ZONE:-all}
-export SKYDNS_ENV=${SKYDNS_ENV:-production}
+export SKYDNS_ENVIRONMENT=${SKYDNS_ENVIRONMENT:-production}
 
 if [[ -n $SKYDNS_IFACE ]]
 then
   export SKYDNS_IP="$(get_iface_v4_addr $SKYDNS_IFACE)"
   if [[ ! -n $SKYDNS_NAME ]]
   then
-    echo "[error] \$SKYDNS_NAME must be set when using \$SKYDNS_IFACE!"
+    echo "$(date '+[%Y-%m-%d %H:%M:%S %Z]') [ERROR] \$SKYDNS_NAME must be set when using \$SKYDNS_IFACE!"
     exit 1
   fi
 elif [[ -n $SKYDNS_CONTAINER ]]
@@ -57,27 +57,27 @@ then
   export SKYDNS_IP="$(get_container_v4_addr $SKYDNS_CONTAINER)"
   export SKYDNS_NAME=$SKYDNS_CONTAINER
 else
-  echo "[error] \$SKYDNS_IFACE OR \$SKYDNS_CONTAINER must be set!"
+  echo "$(date '+[%Y-%m-%d %H:%M:%S %Z]') [ERROR] \$SKYDNS_IFACE OR \$SKYDNS_CONTAINER must be set!"
   exit 1
 fi
 
 if [[ ! -n $SKYDNS_INSTANCE ]]; then
-  echo "[error] \$SKYDNS_INSTANCE number must be set; i.e. pass-through %i from systemd!"
+  echo "$(date '+[%Y-%m-%d %H:%M:%S %Z]') [ERROR] \$SKYDNS_INSTANCE number must be set; i.e. pass-through %i from systemd!"
   exit 1
 fi
 
 if [[ ! -n $SKYDNS_PORT ]]; then
-  echo "[error] \$SKYDNS_PORT must be set!"
+  echo "$(date '+[%Y-%m-%d %H:%M:%S %Z]') [ERROR] \$SKYDNS_PORT must be set!"
   exit 1
 fi
 
 export SKYDNS_PROTO=${SKYDNS_PROTO:-tcp}
 
-export SKYDNS_PATH="/skydns/${SKYDNS_TLD}/${SKYDNS_ZONE}/${SKYDNS_ENV}/${SKYDNS_NAME}/${SKYDNS_INSTANCE}"
+export SKYDNS_PATH="/skydns/${SKYDNS_DOMAIN_PATH}/${SKYDNS_ZONE}/${SKYDNS_ENVIRONMENT}/${SKYDNS_NAME}/${SKYDNS_INSTANCE}"
 
 # smart shutdown on SIGINT and SIGTERM
 function on_exit() {
-  echo "[info] removing ${SKYDNS_PATH}..."
+  echo "$(date '+[%Y-%m-%d %H:%M:%S %Z]') [INFO] Removing ${SKYDNS_PATH}..."
   etcdctl --no-sync -C $ETCD_ADDR rm $SKYDNS_PATH --with-value \
     "{\"host\": \"${SKYDNS_IP}\", \"port\": \"${SKYDNS_PORT}\"}" >/dev/null 2>&1
   exit 0
@@ -86,17 +86,17 @@ trap on_exit INT TERM
 
 # wait for etcd to be available
 until etcdctl --no-sync -C $ETCD_ADDR ls >/dev/null 2>&1; do
-  echo "[info] waiting for etcd at $ETCD_ADDR..."
+  echo "$(date '+[%Y-%m-%d %H:%M:%S %Z]') [INFO] Waiting for etcd at $ETCD_ADDR..."
   sleep $(($ETCD_TTL/2))  # sleep for half the etcd TTL
 done
 
 # wait until etcd has discarded potentially stale values
-echo "[info] sleeping for $((ETCD_TTL+1))s for etcd to discard potentially stale values..."
+echo "$(date '+[%Y-%m-%d %H:%M:%S %Z]') [INFO] Sleeping for $((ETCD_TTL+1))s for etcd to discard potentially stale values..."
 sleep $(($ETCD_TTL+1))
 
-echo "[info] announcing ${SKYDNS_PATH}..."
-echo "[info] host: ${SKYDNS_IP}"
-echo "[info] port: ${SKYDNS_PORT}"
+echo "$(date '+[%Y-%m-%d %H:%M:%S %Z]') [INFO] Announcing ${SKYDNS_PATH}..."
+echo "$(date '+[%Y-%m-%d %H:%M:%S %Z]') [INFO] Host: ${SKYDNS_IP}"
+echo "$(date '+[%Y-%m-%d %H:%M:%S %Z]') [INFO] Port: ${SKYDNS_PORT}"
 
 while etcdctl --no-sync -C $ETCD_ADDR set $SKYDNS_PATH --ttl $ETCD_TTL "{\"host\": \"${SKYDNS_IP}\", \"port\": \"${SKYDNS_PORT}\"}" 2>&1; do
   sleep $(($ETCD_TTL/2)) # sleep for half the etcd TTL
