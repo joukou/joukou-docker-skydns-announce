@@ -98,7 +98,7 @@ echo "$(date '+[%Y-%m-%d %H:%M:%S %Z]') [INFO] Announcing ${SKYDNS_PATH}..."
 echo "$(date '+[%Y-%m-%d %H:%M:%S %Z]') [INFO] Host: ${SKYDNS_IP}"
 echo "$(date '+[%Y-%m-%d %H:%M:%S %Z]') [INFO] Port: ${SKYDNS_PORT}"
 
-while etcdctl --no-sync -C $ETCD_ADDR set $SKYDNS_PATH --ttl $ETCD_TTL "{\"host\": \"${SKYDNS_IP}\", \"port\": \"${SKYDNS_PORT}\"}" 2>&1; do
+while etcdctl --no-sync -C $ETCD_ADDR set --ttl $ETCD_TTL $SKYDNS_PATH "{\"host\": \"${SKYDNS_IP}\", \"port\": ${SKYDNS_PORT}}" 2>&1; do
   sleep $(($ETCD_TTL/2)) # sleep for half the etcd TTL
 done
 
