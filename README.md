@@ -25,9 +25,9 @@ docker run --net=host -e "SKYDNS_IFACE=ens3" -e "ETCD_ADDR=172.17.42.1:4001" -e 
 In both cases the container process will run, updating etcd, every half of the
 etcd TTL.
 
-## Example
+## Examples
 
-See [`quay.io/joukou/riak`](https://github.com/joukou/joukou-docker-riak).
+See [`joukou/joukou-fleet`](https://github.com/joukou/joukou-fleet).
 
 ## Metrics
 
